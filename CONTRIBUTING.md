@@ -664,6 +664,20 @@ cd apps/frontend && pnpm add -D @types/node
 pnpm add axios
 ```
 
+## Dependency Audits & Smoke Tests
+
+- **Dependency audit** - `./scripts/audit.sh` runs `npm audit` (JS apps) and
+  `cargo audit` (`apps/onchain`) and fails on HIGH/CRITICAL advisories. It runs
+  weekly in CI and whenever a lockfile changes. Install `cargo-audit` locally
+  with `cargo install cargo-audit`.
+- **API smoke test** - `./scripts/smoke-test.sh <base-url>` verifies health and
+  auth endpoints (status codes and latency) and exits non-zero on failure. It is
+  used by the `API Smoke Test` workflow and for staging/production verification.
+
+Both scripts live in `scripts/` and require `curl` (plus Node.js for the audit
+summariser). See the README's "Dependency Audit & Health Checks" section for the
+full option list.
+
 ## Questions?
 
 - **Discord**: Join our [Discord server](https://discord.gg/vaultix)
