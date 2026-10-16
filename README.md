@@ -466,6 +466,57 @@ Stellar Network
     ↔ Soroban Contract (onchain/)
 ```
 
+## 🔍 Dependency Audit & Health Checks
+
+Two helper scripts cover routine maintenance and post-deploy verification. Both
+are POSIX/bash scripts that pass `shellcheck` and work on Linux and macOS
+(run them under WSL or Git Bash on Windows).
+
+### Dependency audit
+
+`scripts/audit.sh` runs `npm audit` for the JavaScript apps and `cargo audit`
+for the Soroban contract. It **fails on HIGH/CRITICAL** advisories and merely
+warns for lower severities, writing JSON reports to `audit-reports/`.
+
+```bash
+# Audit everything (JS + Rust)
+./scripts/audit.sh
+
+# Audit only one ecosystem
+./scripts/audit.sh --js
+./scripts/audit.sh --rust
+
+# Choose where the JSON reports are written
+./scripts/audit.sh --report-dir /tmp/audit
+```
+
+The `Dependency Audit` workflow (`.github/workflows/dependency-audit.yml`) runs
+the same script weekly (Mondays 06:17 UTC), on demand, and whenever a lockfile
+changes, uploading `audit-reports/` as a build artifact. **Prerequisites:**
+Node.js 20+ and, for the Rust audit, `cargo install cargo-audit` (CI installs it
+automatically). Dependabot is configured in `.github/dependabot.yml` for npm,
+cargo and GitHub Actions.
+
+### API smoke test
+
+`scripts/smoke-test.sh` waits for the API to become healthy and then checks a
+handful of read-only and auth endpoints, reporting status codes and latency and
+exiting non-zero on any failure. Use it for staging/production verification:
+
+```bash
+# Local API on the default port
+./scripts/smoke-test.sh
+
+# A deployed environment, with more retries for a cold start
+./scripts/smoke-test.sh https://api.staging.example --retries 30 --delay 2
+```
+
+Options include `--url`, `--timeout`, `--retries`, `--delay`, `--max-latency`
+and `--skip-readiness` (see `./scripts/smoke-test.sh --help`). The `API Smoke
+Test` workflow boots the API with SQLite and runs the script on backend changes,
+and can also be dispatched manually against any `base_url`. **Prerequisites:**
+`curl`.
+
 ## 🤝 Contributing
 Contributions welcome to bolster Vaultix's trust features!
 - **Issues**: Report bugs with repro/env details.
