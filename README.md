@@ -65,7 +65,7 @@ QuickEx is a Soroban-based dApp built on Stellar, utilizing:
 - **Blockchain**: Stellar Blockchain, Stellar SDK (JS) for escrow and settlements.
 - **Authentication**: JWT / OAuth.
 - **Payments**: Stellar Lumens (XLM) or custom assets.
-- **Monorepo**: pnpm workspaces with TurboRepo for shared utilities and efficient builds.
+- **Monorepo**: independent apps under `apps/`, each with its own npm scripts (see [Package manager](#package-manager)).
 
 ## Repository Structure
 Vaultix is structured as a monorepo to streamline development across frontend, backend, and shared libraries. This setup enables independent service scaling while reusing components like auth helpers and Stellar utils.
@@ -79,7 +79,7 @@ vaultix/
 │   ├── ui/                # Shared components (Tailwind/ShadCN)
 │   └── stellar-sdk/       # Stellar wrappers (transactions, queries)
 ├── prisma/                # Database schema/migrations (shared)
-├── .pnpm-workspace.yaml   # pnpm config for workspaces
+├── package.json           # Root tooling: ESLint, Prettier and husky hooks
 ├── turbo.json             # Build/dev pipelines
 └── .env.example           # Root env template
 ```
@@ -94,8 +94,8 @@ Get QuickEx running locally in minutes. This setup covers all three apps: fronte
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js** 18+ ([Download](https://nodejs.org)) - JavaScript runtime
-- **pnpm** 8+ (`npm install -g pnpm`) - Package manager (required for monorepo)
+- **Node.js** 20+ ([Download](https://nodejs.org)) - JavaScript runtime
+- **npm** 10+ (bundled with Node.js 20+) - Package manager (see [Package manager](#package-manager))
 - **PostgreSQL** 14+ ([Download](https://www.postgresql.org)) OR **SQLite** (for simpler setup)
 - **Rust** latest stable ([Download](https://rustup.rs)) - For Soroban smart contracts
 - **Soroban CLI** (`cargo install --locked soroban-cli`) - For contract deployment
@@ -106,6 +106,51 @@ Before you begin, ensure you have the following installed:
 - **Docker** - For containerized PostgreSQL
 - **VS Code** with Rust Analyzer, ESLint, Prettier extensions
 
+### Package manager
+
+Vaultix uses **npm** as its single package manager (Node.js 20+ bundles a
+compatible version). Every app keeps its own `package-lock.json`; no other
+lockfiles are committed and CI fails if a `pnpm-lock.yaml`, `pnpm-workspace.yaml`
+or `yarn.lock` is added (see
+[CONTRIBUTING.md](CONTRIBUTING.md#package-manager) for the rationale).
+
+```bash
+npm install                        # root tooling (+ git hooks)
+npm --prefix apps/backend install
+npm --prefix apps/frontend install
+```
+
+### Pre-commit hooks
+
+Lint and format checks run automatically before each commit, via
+[husky](https://typicode.github.io/husky/). Hooks are installed by the root
+`prepare` script when you run `npm install`; to (re)install them manually:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+Only the files being committed are checked:
+
+| Staged files | Check |
+| --- | --- |
+| `*.ts`, `*.tsx`, `*.js`, `*.json`, `*.md`, `*.css` | `prettier --check` |
+| `*.ts`, `*.tsx`, `*.js` under `apps/backend` / `apps/frontend` | that app's `eslint` |
+| `*.rs` | `rustfmt --check` |
+| `*.sh`, `*.bash` | `shellcheck` |
+
+Checks whose tool is not installed are skipped with a warning (install
+`shellcheck` for shell checks; `rustfmt` ships with Rust).
+
+To bypass a run:
+
+```bash
+SKIP_HOOKS=1 git commit -m "wip"   # skip only these checks
+git commit --no-verify             # skip all git hooks
+```
+
+Please keep `--no-verify` for emergencies only - CI runs the same checks.
+
 ### Installation
 
 1. **Clone the repository**:
@@ -114,9 +159,17 @@ Before you begin, ensure you have the following installed:
    cd vaultix
    ```
 
-2. **Install dependencies** (from root):
+2. **Install dependencies**. From the repository root (this also installs the
+   root tooling and the husky git hooks):
    ```bash
-   pnpm install
+   npm install
+   ```
+
+   Each app is an independent package with its own dependencies:
+   ```bash
+   npm --prefix apps/backend install
+   npm --prefix apps/frontend install
+   npm --prefix apps/mobile install   # optional (React Native app)
    ```
 
 3. **Set up environment variables**:
@@ -170,36 +223,25 @@ Before you begin, ensure you have the following installed:
 4. **Set up database**:
    ```bash
    cd apps/backend
-   pnpm typeorm migration:run
-   pnpm seed:admin  # Create initial admin user
+   npm run typeorm -- migration:run
+   npm run seed:admin  # Create initial admin user
    ```
 
 ### Running Locally
 
-**Option 1: Run everything together (Recommended)**
+**Run the services (Recommended)**
 
-From the root directory:
-```bash
-pnpm turbo run dev
-```
-
-This starts:
-- **Backend**: http://localhost:3000
-- **Frontend**: http://localhost:3001 (or 3000, check output)
-- API Docs: http://localhost:3000/api/docs
-
-**Option 2: Run services separately**
-
-In separate terminals:
+The backend and the frontend are separate apps and are started in separate
+terminals:
 
 ```bash
 # Terminal 1 - Backend
 cd apps/backend
-pnpm start:dev
+npm run start:dev
 
 # Terminal 2 - Frontend
 cd apps/frontend
-pnpm dev
+npm run dev
 
 # Terminal 3 - Watch onchain contracts (optional)
 cd apps/onchain
@@ -225,13 +267,13 @@ taskkill /PID <PID> /F
 **Database connection errors**:
 - Ensure PostgreSQL is running: `pg_ctl status` or check Docker container
 - Verify `DATABASE_URL` or `DATABASE_PATH` in `.env`
-- Run migrations: `cd apps/backend && pnpm typeorm migration:run`
+- Run migrations: `cd apps/backend && npm run typeorm -- migration:run`
 
 **TypeScript/Linting errors**:
 ```bash
-# From root
-pnpm turbo run lint
-pnpm turbo run type-check  # If configured
+# From the app directory (e.g. apps/backend)
+cd apps/backend && npm run lint
+cd apps/frontend && npm run lint
 ```
 
 **Wallet connection issues**:
@@ -244,12 +286,12 @@ pnpm turbo run type-check  # If configured
 # Clean and reinstall
 cd apps/backend
 rm -rf node_modules dist
-pnpm install
+npm install
 
 # Same for frontend
 cd apps/frontend
 rm -rf node_modules .next
-pnpm install
+npm install
 ```
 
 **Onchain/Rust errors**:
@@ -279,28 +321,30 @@ cargo build --target wasm32v1-none --release
 3. Stellar network: Fund testnet wallet at [laboratory.stellar.org](https://laboratory.stellar.org). For mainnet, use real assets.
 
 ### Running Locally
-1. Launch with TurboRepo:
+1. Start the apps (in separate terminals):
    ```
-   pnpm turbo run dev
+   npm --prefix apps/backend run start:dev
+   npm --prefix apps/frontend run dev
    ```
    - Frontend: [http://localhost:3000](http://localhost:3000).
    - Backend: [http://localhost:9000](http://localhost:9000).
 2. Test escrow: Connect wallet, initiate a mock transaction.
 
 ### Testing
-1. Lint/type-check:
+1. Lint (per app):
    ```
-   pnpm turbo run lint
-   pnpm turbo run type-check
+   npm --prefix apps/backend run lint
+   npm --prefix apps/frontend run lint
    ```
-2. Unit/integration:
+2. Unit/integration (per app):
    ```
-   pnpm turbo run test
+   npm --prefix apps/backend test
+   npm --prefix apps/frontend test
    ```
    (Jest for JS/TS, Prisma mocks for DB.)
 3. E2E:
    ```
-   pnpm turbo run test:e2e
+   npm --prefix apps/frontend run test:e2e
    ```
    (Playwright; requires testnet.)
 
@@ -367,8 +411,7 @@ vaultix/
 ├── docs/                  # Documentation
 │   └── contract/          # Smart contract documentation
 │
-├── package.json           # Root package.json (shared configs)
-└── pnpm-workspace.yaml    # pnpm workspace configuration
+└── package.json           # Root tooling: ESLint, Prettier and husky hooks
 ```
 
 ### Key Entry Points
@@ -432,7 +475,7 @@ Contributions welcome to bolster Vaultix's trust features!
   2. Code/test/lint.
   3. Commit: "feat: add milestone notifications".
   4. PR to `main`.
-- Monorepo tips: `pnpm turbo run build --filter=...`.
+- Run a script for a single app: `npm --prefix apps/backend run build`.
 - **Mobile app**: see [apps/mobile/README.md](apps/mobile/README.md) for Expo SDK 52 / React Native 0.76 prerequisites, `EXPO_PUBLIC_*` environment variables (matching `security/env.ts`), and `start`, `android`, `ios`, `lint`, `type-check`, and `test` commands.
 Follow [CONTRIBUTING.md](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
 
