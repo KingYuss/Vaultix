@@ -98,7 +98,7 @@ describe('PreferenceService', () => {
     it('should persist digestEnabled', async () => {
       const existing = { ...mockPref, digestEnabled: false };
       repo.findOne.mockResolvedValue(existing as any);
-      repo.save.mockImplementation(async (p: any) => p);
+      repo.save.mockImplementation((p: any) => Promise.resolve(p));
 
       const result = await service.updatePreferences('u1', [
         {
